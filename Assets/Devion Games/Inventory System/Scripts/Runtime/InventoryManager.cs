@@ -19,11 +19,12 @@ namespace DevionGames.InventorySystem
 		public bool dontDestroyOnLoad = true;
 
         private static InventoryManager m_Current;
+        private static ISaveProvider m_SaveProvider;
 
-		/// <summary>
-		/// The InventoryManager singleton object. This object is set inside Awake()
-		/// </summary>
-		public static InventoryManager current {
+        /// <summary>
+        /// The InventoryManager singleton object. This object is set inside Awake()
+        /// </summary>
+        public static InventoryManager current {
 			get {
                 Assert.IsNotNull(m_Current, "Requires an Inventory Manager.Create one from Tools > Devion Games > Inventory System > Create Inventory Manager!");
 				return m_Current;
@@ -141,7 +142,6 @@ namespace DevionGames.InventorySystem
         protected static bool m_IsLoaded = false;
         public static bool IsLoaded { get => m_IsLoaded; }
 
-
         /// <summary>
         /// Awake is called when the script instance is being loaded.
         /// </summary>
@@ -185,6 +185,12 @@ namespace DevionGames.InventorySystem
                     }
 					DontDestroyOnLoad (gameObject);
 				}
+
+                if (!TryGetComponent<ISaveProvider>(out m_SaveProvider))
+                {
+                    m_SaveProvider = gameObject.AddComponent<ProviderPlayerPrefs>();
+                } 
+
                 if (InventoryManager.SavingLoading.autoSave) {
                     StartCoroutine(RepeatSaving(InventoryManager.SavingLoading.savingRate));
                 }
@@ -282,6 +288,7 @@ namespace DevionGames.InventorySystem
             Save(key);
         }
 
+
         public static void Save(string key, int index = 0) {
             string uiData = string.Empty;
             string worldData = string.Empty;
@@ -289,20 +296,20 @@ namespace DevionGames.InventorySystem
 
             string currentScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
             
-            PlayerPrefs.SetString(key+".UI",uiData);
-            PlayerPrefs.SetString(key + "." + currentScene, worldData);
-            List<string> scenes = PlayerPrefs.GetString(key + ".Scenes").Split(';').ToList();
+            m_SaveProvider.SetString(key+".UI",uiData);
+            m_SaveProvider.SetString(key + "." + currentScene, worldData);
+            List<string> scenes = m_SaveProvider.GetString(key + ".Scenes").Split(';').ToList();
             scenes.RemoveAll(x => string.IsNullOrEmpty(x));
             if (!scenes.Contains(currentScene)) {
                 scenes.Add(currentScene);
             }
-            PlayerPrefs.SetString(key + ".Scenes", string.Join(";", scenes));
-            List<string> keys = PlayerPrefs.GetString("InventorySystemSavedKeys").Split(';').ToList();
+            m_SaveProvider.SetString(key + ".Scenes", string.Join(";", scenes));
+            List<string> keys = m_SaveProvider.GetString("InventorySystemSavedKeys").Split(';').ToList();
             keys.RemoveAll(x => string.IsNullOrEmpty(x));
             if (!keys.Contains(key)) {
                 keys.Insert(index,key);
             }
-            PlayerPrefs.SetString("InventorySystemSavedKeys",string.Join(";",keys));
+            m_SaveProvider.SetString("InventorySystemSavedKeys",string.Join(";",keys));
 
 
             if (InventoryManager.current != null && InventoryManager.current.onDataSaved != null){
@@ -313,6 +320,7 @@ namespace DevionGames.InventorySystem
                 Debug.Log("[Inventory System] UI Saved: "+uiData);
                 Debug.Log("[Inventory System] Scene Saved: " + worldData);
             }
+            m_SaveProvider.EndSave();
         }
 
         public static void Serialize(ref string uiData, ref string sceneData) {
@@ -336,11 +344,13 @@ namespace DevionGames.InventorySystem
         }
 
         public static void Load(string key) {
+            m_SaveProvider.StartLoad();
             string currentScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
-            string uiData = PlayerPrefs.GetString(key + ".UI");
-            string sceneData = PlayerPrefs.GetString(key + "." + currentScene);
+            string uiData = m_SaveProvider.GetString(key + ".UI");
+            string sceneData = m_SaveProvider.GetString(key + "." + currentScene);
 
             Load(uiData, sceneData);
+            m_SaveProvider.EndLoad();
         }
 
         public static void Load(string uiData, string sceneData) {
@@ -361,7 +371,7 @@ namespace DevionGames.InventorySystem
         }
 
         public static bool HasSavedData(string key) {
-            return !string.IsNullOrEmpty(PlayerPrefs.GetString(key + ".UI"));
+            return !string.IsNullOrEmpty(m_SaveProvider.GetString(key + ".UI"));
         }
 
         private static void LoadUI(string json)
